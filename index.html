@@ -178,12 +178,12 @@ form.answer{display:flex;flex-direction:column;gap:10px}
       <div class="meta" id="unitMeta"></div>
     </div>
     <div class="field">
-      <span class="lbl" id="lenLbl">Parole per test</span>
+      <span class="lbl" id="lenLbl">Quarto della lista</span>
       <div class="seg" id="len" role="group" aria-labelledby="lenLbl">
-        <button type="button" data-n="10">10</button>
-        <button type="button" data-n="20">20</button>
-        <button type="button" data-n="40">40</button>
-        <button type="button" data-n="0" aria-pressed="true">Tutte</button>
+        <button type="button" data-n="1" aria-pressed="true">1/4</button>
+        <button type="button" data-n="2">2/4</button>
+        <button type="button" data-n="3">3/4</button>
+        <button type="button" data-n="4">4/4</button>
       </div>
     </div>
     <div class="steps">
@@ -193,7 +193,7 @@ form.answer{display:flex;flex-direction:column;gap:10px}
     <p class="note">L'ortografia deve essere esatta, compresi gli accenti (ά, è…) e gli articoli (il, το…). Maiuscole e punteggiatura finale non contano. Se la lista dà più alternative separate da virgole, ne basta una.</p>
     <button class="btn" id="startBtn" type="button">Cominciamo!</button>
     <details>
-      <summary>Studia la lista delle parole</summary>
+      <summary>Studia le parole di questo quarto</summary>
       <div class="wordlist" id="wordlist"></div>
     </details>
   </section>
@@ -232,7 +232,7 @@ form.answer{display:flex;flex-direction:column;gap:10px}
     <div class="mist" id="mist"></div>
     <div class="row">
       <button class="btn" id="retryMistakes" type="button">Ripassa i miei errori</button>
-      <button class="btn ghost" id="again" type="button">Ripeti la stessa unità</button>
+      <button class="btn ghost" id="again" type="button">Ripeti lo stesso quarto</button>
       <button class="btn quiet" id="home" type="button">Scegli un'altra unità</button>
     </div>
   </section>
@@ -274,7 +274,8 @@ function variants(target, italian){
 }
 
 /* ---------- setup ---------- */
-let wordsN = 0;
+let wordsN = 1;
+const quarter = (u,q) => { const a = VOCAB[u], n = a.length; return a.slice(Math.round(n*(q-1)/4), Math.round(n*q/4)); };
 const unitSel = $('unit');
 UNITS.forEach((u,i) => {
   const o = document.createElement('option');
@@ -283,8 +284,8 @@ UNITS.forEach((u,i) => {
 });
 const savedUnit = store.get('pn_unit');
 if(savedUnit && VOCAB[savedUnit]) unitSel.value = savedUnit;
-const savedN = store.get('pn_n');
-if(savedN !== null) setLen(savedN);
+const savedN = store.get('pn_q');
+if([1,2,3,4].includes(savedN)) setLen(savedN);
 
 function setLen(n){
   wordsN = n;
@@ -293,21 +294,21 @@ function setLen(n){
 }
 $('len').addEventListener('click', e => {
   const b = e.target.closest('button'); if(!b) return;
-  setLen(+b.dataset.n); store.set('pn_n', wordsN);
+  setLen(+b.dataset.n); store.set('pn_q', wordsN); renderSetup();
 });
 unitSel.addEventListener('change', () => { store.set('pn_unit', unitSel.value); renderSetup(); });
 
 function renderMeta(){
   const u = unitSel.value, total = VOCAB[u].length;
-  const n = wordsN && wordsN < total ? wordsN : total;
-  const best = (store.get('pn_best')||{})[u];
-  $('unitMeta').innerHTML = `<span><b>${total}</b> parole nell'unità</span><span><b>${n*2}</b> domande (${n} per direzione)</span>` +
+  const n = quarter(u, wordsN).length;
+  const best = (store.get('pn_best')||{})[u+'|'+wordsN];
+  $('unitMeta').innerHTML = `<span><b>${n}</b> parole nel quarto ${wordsN}/4 (su ${total})</span><span><b>${n*2}</b> domande (${n} per direzione)</span>` +
     (best ? `<span>Record: <b>${best}%</b></span>` : '');
 }
 function renderSetup(){
   renderMeta();
   const wl = $('wordlist'); wl.innerHTML = '';
-  VOCAB[unitSel.value].forEach(([it,gr]) => {
+  quarter(unitSel.value, wordsN).forEach(([it,gr]) => {
     const a = document.createElement('div'); a.textContent = it;
     const b = document.createElement('div'); b.textContent = gr;
     wl.append(a,b);
@@ -322,7 +323,7 @@ let T = null; // test state
 
 function shuffle(a){ a = a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
-function startTest(unit, pairs){
+function startTest(unit, pairs, label, key){
   const all = VOCAB[unit];
   // accepted answers grouped by prompt so duplicate prompts accept every listed meaning
   const byIt = new Map(), byGr = new Map();
@@ -338,7 +339,7 @@ function startTest(unit, pairs){
     return {dir, it, gr, prompt, shown: [...new Set(answers)].join('  |  '), acc};
   });
   T = {
-    unit, pairs,
+    unit, pairs, label, key,
     qs: mk('it', shuffle(pairs)).concat(mk('gr', shuffle(pairs))),
     i: 0, answered: false, results: []
   };
@@ -417,7 +418,7 @@ function showResults(){
   const p1 = T.results.filter(r=>r.dir==='it'), p2 = T.results.filter(r=>r.dir==='gr');
   const c1 = p1.filter(r=>r.ok).length, c2 = p2.filter(r=>r.ok).length;
   const tot = T.results.length, ct = c1 + c2, pct = Math.round(ct / tot * 100);
-  $('resUnit').textContent = T.unit + (T.pairs.length < VOCAB[T.unit].length ? ` · ${T.pairs.length} parole` : ' · tutte le parole');
+  $('resUnit').textContent = `${T.unit} · ${T.label} · ${T.pairs.length} parole`;
   $('grade').textContent = pct === 100 ? 'Perfetto! Tutto giusto.' : pct >= 85 ? 'Bravissimo! Molto bene.' : pct >= 60 ? 'Bene! Continua così.' : 'Forza! Continua a esercitarti.';
   $('score').innerHTML =
     `<div><span>IT → GR</span><b>${c1}/${p1.length}</b><em>${Math.round(c1/p1.length*100)}%</em></div>`+
@@ -435,20 +436,19 @@ function showResults(){
   T.results.filter(r=>!r.ok).forEach(r => { const k = r.it+'|'+r.gr; if(!seen.has(k)){ seen.add(k); wrongPairs.push([r.it,r.gr]); } });
   T.wrongPairs = wrongPairs;
   $('retryMistakes').hidden = !wrongPairs.length;
-  if(T.pairs.length === VOCAB[T.unit].length){
+  if(T.key){
     const best = store.get('pn_best') || {};
-    if(!best[T.unit] || pct > best[T.unit]){ best[T.unit] = pct; store.set('pn_best', best); }
+    if(!best[T.key] || pct > best[T.key]){ best[T.key] = pct; store.set('pn_best', best); }
   }
   window.scrollTo({top:0});
 }
-$('retryMistakes').addEventListener('click', () => startTest(T.unit, T.wrongPairs));
+$('retryMistakes').addEventListener('click', () => startTest(T.unit, T.wrongPairs, 'ripasso errori', null));
 $('again').addEventListener('click', () => begin());
 $('home').addEventListener('click', () => { T = null; $('results').hidden = true; $('setup').hidden = false; renderSetup(); });
 
 function begin(){
-  const u = unitSel.value, all = VOCAB[u];
-  const pairs = wordsN && wordsN < all.length ? shuffle(all).slice(0, wordsN) : all.slice();
-  startTest(u, pairs);
+  const u = unitSel.value;
+  startTest(u, quarter(u, wordsN), `quarto ${wordsN}/4`, u+'|'+wordsN);
 }
 $('startBtn').addEventListener('click', begin);
 </script>
